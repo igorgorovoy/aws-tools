@@ -42,11 +42,27 @@ def create_ami(instance_id):
 
 
 def wait_for_ami(ami_id):
-    """Wait for the AMI to become available."""
+    """Wait for the AMI to become available with manual status checks."""
     print(f'Waiting for AMI {ami_id} to become available...')
-    waiter = source_ec2.get_waiter('image_available')
-    waiter.wait(ImageIds=[ami_id])
-    print(f'AMI {ami_id} is now available.')
+
+    max_attempts = 100  # Number of attempts to check the status
+    sleep_time = 30  # Time to wait between checks in seconds
+
+    for attempt in range(max_attempts):
+        response = source_ec2.describe_images(ImageIds=[ami_id])
+        state = response['Images'][0]['State']
+
+        if state == 'available':
+            print(f'AMI {ami_id} is now available.')
+            return
+        elif state == 'failed':
+            print(f'AMI {ami_id} creation failed.')
+            return
+        else:
+            print(f'Attempt {attempt + 1}: AMI {ami_id} is still {state}. Waiting...')
+            sleep(sleep_time)
+
+    print(f'AMI {ami_id} did not become available after {max_attempts * sleep_time / 60} minutes.')
 
 
 def copy_security_groups(security_group_ids):
@@ -99,11 +115,27 @@ def copy_ami(ami_id):
 
 
 def wait_for_copied_ami(copied_ami_id):
-    """Wait for the copied AMI to become available."""
+    """Wait for the copied AMI to become available with manual status checks."""
     print(f'Waiting for copied AMI {copied_ami_id} to become available...')
-    waiter = destination_ec2.get_waiter('image_available')
-    waiter.wait(ImageIds=[copied_ami_id])
-    print(f'Copied AMI {copied_ami_id} is now available.')
+
+    max_attempts = 100  # Number of attempts to check the status
+    sleep_time = 30  # Time to wait between checks in seconds
+
+    for attempt in range(max_attempts):
+        response = destination_ec2.describe_images(ImageIds=[copied_ami_id])
+        state = response['Images'][0]['State']
+
+        if state == 'available':
+            print(f'Copied AMI {copied_ami_id} is now available.')
+            return
+        elif state == 'failed':
+            print(f'Copied AMI {copied_ami_id} creation failed.')
+            return
+        else:
+            print(f'Attempt {attempt + 1}: Copied AMI {copied_ami_id} is still {state}. Waiting...')
+            sleep(sleep_time)
+
+    print(f'Copied AMI {copied_ami_id} did not become available after {max_attempts * sleep_time / 60} minutes.')
 
 
 def launch_instance(instance_data, ami_id, security_group_ids):
@@ -179,3 +211,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
