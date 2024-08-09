@@ -100,6 +100,13 @@ for cluster in elasticache_clusters:
     config = fetch_cluster_configuration(cluster)
     if config:
         cluster_configurations[cluster] = config
+    else:
+        print(f"Failed to fetch configuration for cluster: {cluster}")
+
+# Debugging: Print the cluster configurations fetched
+print("Fetched Cluster Configurations:")
+for cluster_id, config in cluster_configurations.items():
+    print(f"{cluster_id}: {config}")
 
 # Step 2: Create Snapshots
 with ThreadPoolExecutor(max_workers=5) as executor:
@@ -125,9 +132,11 @@ with ThreadPoolExecutor(max_workers=5) as executor:
 
 # Step 4: Restore from Snapshots
 with ThreadPoolExecutor(max_workers=5) as executor:
-    future_to_restore = {executor.submit(
-        restore_from_snapshot, cluster, f"{snapshot_prefix}{cluster}-copy", cluster_configurations[cluster]
-    ): cluster for cluster in elasticache_clusters}
+    future_to_restore = {
+        executor.submit(
+            restore_from_snapshot, cluster, f"{snapshot_prefix}{cluster}-copy", cluster_configurations.get(cluster, {})
+        ): cluster for cluster in elasticache_clusters if cluster in cluster_configurations
+    }
     for future in as_completed(future_to_restore):
         cluster = future_to_restore[future]
         try:
