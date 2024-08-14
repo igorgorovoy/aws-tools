@@ -3,15 +3,16 @@ import time
 
 # Configuration
 source_region = 'eu-central-1'  # Source region
-target_region = 'eu-north-1'  # Target region
+target_region = 'eu-west-1'  # Target region
 # Commented out as we will save and use the original DB instance class
 # db_instance_class = 'db.t4g.small'
 availability_zone = f'{target_region}a'  # Availability zone in the target region
-multi_az = False  # Set to True for Multi-AZ deployment
+multi_az = True  # Set to True for Multi-AZ deployment
 publicly_accessible = True  # Set to False if the instance should not be publicly accessible
 
 # Specify your KMS key ID in the target region (required for encrypted snapshots)
-kms_key_id = 'b661fdf1-efa3-4f33-ab96-ffd31c6857e1'
+kms_key_id = '18d3258d-89df-4690-82a1-f2da9ba78ccb'  # Ireland
+db_subnet_group_name = 'kuna-dev-vpc-blue'  # Your specific DB subnet group name
 
 # Create a client for the source region
 rds_client_source = boto3.client('rds', region_name=source_region)
@@ -158,6 +159,7 @@ else:
             'DBInstanceIdentifier': target_db_instance_identifier,
             'DBSnapshotIdentifier': snapshot_identifier,
             'DBInstanceClass': db_instance_class,  # Use the original instance class
+            'DBSubnetGroupName': db_subnet_group_name,  # Use the specified DB subnet group
             'MultiAZ': multi_az,
             'PubliclyAccessible': publicly_accessible
         }
