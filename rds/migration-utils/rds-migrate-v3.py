@@ -12,7 +12,7 @@ publicly_accessible = True  # Set to False if the instance should not be publicl
 
 # Specify your KMS key ID in the target region (required for encrypted snapshots)
 kms_key_id = '18d3258d-89df-4690-82a1-f2da9ba78ccb'  # Ireland
-db_subnet_group_name = 'kuna-dev-vpc-blue'  # Your specific DB subnet group name
+db_subnet_group_name = 'multiregion-dev-vpc-blue'  # Your specific DB subnet group name
 
 # Create a client for the source region
 rds_client_source = boto3.client('rds', region_name=source_region)
@@ -24,7 +24,7 @@ rds_client_target = boto3.client('rds', region_name=target_region)
 account_id = boto3.client('sts').get_caller_identity().get('Account')
 
 # Define an exclude list for instance identifiers
-exclude_list = ['instance-id-1', 'instance-id-2']  # Add your specific instance IDs to exclude
+exclude_list = ['athena-dev-banking', 'athena-dev-dwh', 'athena-dev-trading-processor', 'athena-devrds', 'athena-trading-processor', 'athena-vaultdev', 'athena-banking']  # Add your specific instance IDs to exclude
 
 # Record the total start time
 total_start_time = time.time()
