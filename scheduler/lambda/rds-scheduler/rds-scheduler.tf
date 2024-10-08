@@ -37,7 +37,7 @@ resource "aws_lambda_function" "rds_scheduler_lambda" {
 
   layers = [
     #"arn:aws:lambda:eu-central-1:294949574448:layer:python-custom-layer:3"
-     aws_lambda_layer_version.layer.arn
+    aws_lambda_layer_version.layer.arn
   ]
 
   environment {
@@ -54,6 +54,7 @@ resource "aws_lambda_function" "rds_scheduler_lambda" {
       ])
       EXCLUDED_INSTANCES = jsonencode([
         "multiregion-dev-vault"
+
       ])
     }
   }
@@ -113,7 +114,7 @@ resource "aws_cloudwatch_event_rule" "lambda_schedule_disable" {
   provider            = aws.Blue
   name                = "rds_scheduler-disable-schedule"
   description         = "Trigger Lambda function to disable instances daily at 19:00 UTC"
-  schedule_expression = "cron(0 23 * * ? *)"
+  schedule_expression = "cron(0 19 * * ? *)"
   state               = "ENABLED"
 }
 

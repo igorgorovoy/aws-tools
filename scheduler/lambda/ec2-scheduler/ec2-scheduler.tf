@@ -52,7 +52,7 @@ resource "aws_lambda_function" "ec2_scheduler_lambda" {
         "i-0c3244c33dccd2e5b",
         "i-0810ab9036e010310",
         "i-051b2779f4549849d",
-        "i-059a229c4c8dc8e94"
+        "i-059a229c4c8dc8e94",
       ])
       EXCLUDED_INSTANCES = jsonencode([
         "i-09722b6eda50d6423",
@@ -80,32 +80,6 @@ resource "aws_iam_instance_profile" "ec2_scheduler_instance_profile" {
 }
 
 
-## CloudWatch Event Rule for Scheduling the Lambda Function
-#resource "aws_cloudwatch_event_rule" "lambda_schedule" {
-#  provider            = aws.Green
-#  name                = "ec2_scheduler-on"
-#  description         = "Trigger Lambda function daily at 6:00 UTC"
-#  schedule_expression = "cron(0 6 * * ? *)" # Run at 06:00 UTC every day
-#  state               = "ENABLED"           # Temporarily disable the scheduler
-#}
-#
-## CloudWatch Event Target to Link Rule to Lambda Function
-#resource "aws_cloudwatch_event_target" "trigger_lambda" {
-#  provider  = aws.Green
-#  rule      = aws_cloudwatch_event_rule.lambda_schedule.name
-#  target_id = "ec2_scheduler-lambda"
-#  arn       = aws_lambda_function.ec2_scheduler_lambda.arn
-#}
-#
-## Permission for CloudWatch to Invoke the Lambda Function
-#resource "aws_lambda_permission" "allow_cloudwatch" {
-#  provider      = aws.Green
-#  statement_id  = "AllowExecutionFromCloudWatch"
-#  action        = "lambda:InvokeFunction"
-#  function_name = aws_lambda_function.ec2_scheduler_lambda.function_name
-#  principal     = "events.amazonaws.com"
-#  source_arn    = aws_cloudwatch_event_rule.lambda_schedule.arn
-#}
 
 # CloudWatch Event Rule для ACTION=enable
 resource "aws_cloudwatch_event_rule" "lambda_schedule_enable" {
@@ -149,7 +123,7 @@ resource "aws_cloudwatch_event_rule" "lambda_schedule_disable" {
   provider            = aws.Green
   name                = "ec2_scheduler-disable-schedule"
   description         = "Trigger Lambda function to disable instances daily at 19:00 UTC"
-  schedule_expression = "cron(0 23 * * ? *)"
+  schedule_expression = "cron(0 19 * * ? *)"
   state               = "ENABLED"
 }
 

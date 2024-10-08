@@ -1,59 +1,46 @@
 import boto3
+from botocore.exceptions import ClientError
 import json
 import os
-from botocore.exceptions import ClientError
 
-
-# Optional: Initialize a global cache for clients if you expect multiple regions
-# client_cache = {}
 
 def get_boto3_client(service, region):
     return boto3.client(service, region_name=region)
 
 
-# Get active RDS instances excluding the specified ones
+def parse_instances(input_instances):
+    """
+    Функція для парсингу вхідних даних інстансів.
+    Повертає список інстансів незалежно від того, чи передано їх як список чи рядок.
+    """
+    if isinstance(input_instances, list):
+        return input_instances
+    elif isinstance(input_instances, str):
+        try:
+            # Спробуємо розпарсити як JSON список
+            return json.loads(input_instances)
+        except json.JSONDecodeError:
+            # Якщо не JSON, розділимо рядок за комами
+            return [inst.strip() for inst in input_instances.split(',') if inst.strip()]
+    else:
+        return []
+
+
 def get_active_rds_instances(db_instance_identifiers, excluded_instances):
+    """
+    Фільтрує список інстансів, виключаючи ті, які знаходяться у списку виключень.
+    """
     instances_to_manage = [inst for inst in db_instance_identifiers if inst not in excluded_instances]
     return instances_to_manage
 
 
-# Save the list of RDS instances to SSM
-def save_instances_to_ssm(ssm_client, parameter_name, instances):
-    try:
-        ssm_client.put_parameter(
-            Name=parameter_name,
-            Value=json.dumps(instances),
-            Type='String',
-            Overwrite=True
-        )
-        print(f'Stored {len(instances)} RDS instance IDs to SSM parameter {parameter_name}.')
-    except ClientError as e:
-        print(f'Failed to store parameters to SSM: {e}')
-        raise
-
-
-# Get the list of RDS instances from SSM
-def get_instances_from_ssm(ssm_client, parameter_name):
-    try:
-        response = ssm_client.get_parameter(Name=parameter_name)
-        instances = json.loads(response['Parameter']['Value'])
-        print(f'Retrieved {len(instances)} RDS instance IDs from SSM parameter {parameter_name}.')
-        return instances
-    except ssm_client.exceptions.ParameterNotFound:
-        print(f'No SSM parameter found with name {parameter_name}.')
-        return []
-    except ClientError as e:
-        print(f'Failed to retrieve parameters from SSM: {e}')
-        raise
-
-
-# Disable (stop) RDS instances
-def disable_rds_instances(rds_client, ssm_client, parameter_name, instances):
+def disable_rds_instances(rds_client, instances):
+    """
+    Зупиняє вказані RDS інстанси, якщо вони знаходяться в стані 'available'.
+    """
     if not instances:
         print('No RDS instances to disable.')
         return
-
-    save_instances_to_ssm(ssm_client, parameter_name, instances)
 
     for instance_id in instances:
         try:
@@ -66,17 +53,17 @@ def disable_rds_instances(rds_client, ssm_client, parameter_name, instances):
                 print(f'RDS instance {instance_id} is not in available state (current state: {status}). Skipping.')
                 continue
 
-            # Stop the instance
+            # Зупинка інстансу
             rds_client.stop_db_instance(DBInstanceIdentifier=instance_id)
             print(f'Stopped RDS instance: {instance_id}')
         except ClientError as e:
             print(f'Failed to stop RDS instance {instance_id}: {e}')
 
 
-# Enable (start) RDS instances
-def enable_rds_instances(rds_client, ssm_client, parameter_name):
-    instances = get_instances_from_ssm(ssm_client, parameter_name)
-
+def enable_rds_instances(rds_client, instances):
+    """
+    Запускає вказані RDS інстанси, якщо вони знаходяться в стані 'stopped'.
+    """
     if not instances:
         print('No RDS instances to enable.')
         return
@@ -91,7 +78,7 @@ def enable_rds_instances(rds_client, ssm_client, parameter_name):
                 print(f'RDS instance {instance_id} is not in stopped state (current state: {status}). Skipping.')
                 continue
 
-            # Start the instance
+            # Запуск інстансу
             rds_client.start_db_instance(DBInstanceIdentifier=instance_id)
             print(f'Started RDS instance: {instance_id}')
         except ClientError as e:
@@ -99,36 +86,46 @@ def enable_rds_instances(rds_client, ssm_client, parameter_name):
 
 
 def lambda_handler(event, context):
-    # Extract parameters from the event or environment variables
+    """
+    Основна функція Lambda, яка керує запуском та зупинкою RDS інстансів.
+    """
+    # Отримання параметрів з події або змінних середовища
     action = event.get('ACTION', os.environ.get('ACTION', 'enable')).lower()
     region = event.get('REGION', os.environ.get('REGION', 'eu-west-1'))
-    parameter_name = event.get('SSM_PARAMETER', os.environ.get('SSM_PARAMETER', '/rds/disable-instances'))
 
-    # Ensure INSTANCES and EXCLUDED_INSTANCES are lists
-    db_instance_identifiers = event.get('INSTANCES', os.environ.get('INSTANCES', []))
-    if isinstance(db_instance_identifiers, str):
-        db_instance_identifiers = [db_instance_identifiers]
+    # Отримання списків інстансів
+    db_instance_identifiers = event.get('INSTANCES', os.environ.get('INSTANCES', '[]'))
+    excluded_instances = event.get('EXCLUDED_INSTANCES', os.environ.get('EXCLUDED_INSTANCES', '[]'))
 
-    excluded_instances = event.get('EXCLUDED_INSTANCES', os.environ.get('EXCLUDED_INSTANCES', []))
-    if isinstance(excluded_instances, str):
-        excluded_instances = [excluded_instances]
+    # Парсинг списків інстансів
+    db_instance_identifiers = parse_instances(db_instance_identifiers)
+    excluded_instances = parse_instances(excluded_instances)
 
-    # Initialize Boto3 clients with the specified region
+    print(f"Region: {region}")
+    print(f"Parsed INSTANCES: {db_instance_identifiers}")
+    print(f"Parsed EXCLUDED_INSTANCES: {excluded_instances}")
+
+    # Ініціалізація клієнтів Boto3
     try:
         rds_client = get_boto3_client('rds', region)
-        ssm_client = get_boto3_client('ssm', region)
     except Exception as e:
-        print(f'Error initializing Boto3 clients: {e}')
+        print(f'Error initializing Boto3 RDS client: {e}')
         return {
             'statusCode': 500,
-            'body': json.dumps({'error': 'Failed to initialize AWS clients.'})
+            'body': json.dumps({'error': 'Failed to initialize RDS client.'})
         }
 
+    # Фільтрація інстансів для керування
+    instances_to_manage = get_active_rds_instances(db_instance_identifiers, excluded_instances)
+    print(f"Instances to manage: {instances_to_manage}")
+
+    # Виконання дії на основі параметра ACTION
     if action == 'disable':
-        instances = get_active_rds_instances(db_instance_identifiers, excluded_instances)
-        disable_rds_instances(rds_client, ssm_client, parameter_name, instances)
+        disable_rds_instances(rds_client, instances_to_manage)
+        message = f'Action "disable" completed successfully on instances: {instances_to_manage}.'
     elif action == 'enable':
-        enable_rds_instances(rds_client, ssm_client, parameter_name)
+        enable_rds_instances(rds_client, instances_to_manage)
+        message = f'Action "enable" completed successfully on instances: {instances_to_manage}.'
     else:
         message = 'Invalid action specified. Use "disable" or "enable".'
         print(message)
@@ -139,5 +136,5 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'body': json.dumps({'message': f'Action "{action}" completed successfully.'})
+        'body': json.dumps({'message': message})
     }

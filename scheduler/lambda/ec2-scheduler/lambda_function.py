@@ -1,54 +1,32 @@
 import boto3
+from botocore.exceptions import ClientError
 import json
 import os
-from botocore.exceptions import ClientError
-
 
 def init_clients(region):
+    print("Region: " + region)
     ec2_client = boto3.client('ec2', region_name=region)
-    ssm_client = boto3.client('ssm', region_name=region)
-    return ec2_client, ssm_client
+    return ec2_client
 
+def parse_instances(input_instances):
+    if isinstance(input_instances, list):
+        return input_instances
+    elif isinstance(input_instances, str):
+        try:
+            return json.loads(input_instances)
+        except json.JSONDecodeError:
+            return [inst.strip() for inst in input_instances.split(',') if inst.strip()]
+    else:
+        return []
 
-def get_active_instances(ec2_client, instance_ids, excluded_instances):
+def get_active_instances(instance_ids, excluded_instances):
     instances_to_manage = [inst for inst in instance_ids if inst not in excluded_instances]
     return instances_to_manage
 
-
-def save_instances_to_ssm(ssm_client, parameter_name, instances):
-    try:
-        ssm_client.put_parameter(
-            Name=parameter_name,
-            Value=json.dumps(instances),
-            Type='String',
-            Overwrite=True
-        )
-        print(f'Stored {len(instances)} EC2 instance IDs to SSM parameter {parameter_name}.')
-    except ClientError as e:
-        print(f'Failed to store parameters to SSM: {e}')
-        raise
-
-
-def get_instances_from_ssm(ssm_client, parameter_name):
-    try:
-        response = ssm_client.get_parameter(Name=parameter_name)
-        instances = json.loads(response['Parameter']['Value'])
-        print(f'Retrieved {len(instances)} EC2 instance IDs from SSM parameter {parameter_name}.')
-        return instances
-    except ssm_client.exceptions.ParameterNotFound:
-        print(f'No SSM parameter found with name {parameter_name}.')
-        return []
-    except ClientError as e:
-        print(f'Failed to retrieve parameters from SSM: {e}')
-        raise
-
-
-def disable_instances(ec2_client, ssm_client, parameter_name, instances):
+def disable_instances(ec2_client, instances):
     if not instances:
         print('No instances to disable.')
         return
-
-    save_instances_to_ssm(ssm_client, parameter_name, instances)
 
     try:
         ec2_client.stop_instances(InstanceIds=instances)
@@ -57,10 +35,8 @@ def disable_instances(ec2_client, ssm_client, parameter_name, instances):
         print(f'Failed to stop instances: {e}')
         raise
 
-
-def enable_instances(ec2_client, ssm_client, parameter_name):
-    instances = get_instances_from_ssm(ssm_client, parameter_name)
-
+def enable_instances(ec2_client, instances):
+    print("Instances to enable: " + str(instances))
     if not instances:
         print('No instances to enable.')
         return
@@ -72,20 +48,26 @@ def enable_instances(ec2_client, ssm_client, parameter_name):
         print(f'Failed to start instances: {e}')
         raise
 
-
 def lambda_handler(event, context):
     action = event.get('ACTION', os.environ.get('ACTION', 'enable'))
     region = event.get('REGION', os.environ.get('REGION', 'eu-central-1'))
-    ssm_parameter = event.get('SSM_PARAMETER', os.environ.get('SSM_PARAMETER', '/ec2/developers-disable-instances'))
-    instances = event.get('INSTANCES', os.environ.get('INSTANCES', []))
-    excluded_instances = event.get('EXCLUDED_INSTANCES', os.environ.get('EXCLUDED_INSTANCES', []))
+    instances = event.get('INSTANCES', os.environ.get('INSTANCES', '[]'))
+    excluded_instances = event.get('EXCLUDED_INSTANCES', os.environ.get('EXCLUDED_INSTANCES', '[]'))
 
-    ec2_client, ssm_client = init_clients(region)
+    instances = parse_instances(instances)
+    excluded_instances = parse_instances(excluded_instances)
+
+    print(f"Parsed INSTANCES: {instances}")
+    print(f"Parsed EXCLUDED_INSTANCES: {excluded_instances}")
+
+    ec2_client = init_clients(region)
+
+    instances_to_manage = get_active_instances(instances, excluded_instances)
+    print(f"Instances to manage: {instances_to_manage}")
 
     if action == 'disable':
-        instances_to_disable = get_active_instances(ec2_client, instances, excluded_instances)
-        disable_instances(ec2_client, ssm_client, ssm_parameter, instances_to_disable)
+        disable_instances(ec2_client, instances_to_manage)
     elif action == 'enable':
-        enable_instances(ec2_client, ssm_client, ssm_parameter)
+        enable_instances(ec2_client, instances_to_manage)
     else:
         print(f'Invalid action: {action}')
